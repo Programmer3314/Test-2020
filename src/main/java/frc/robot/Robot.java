@@ -13,6 +13,13 @@ import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMaxLowLevel;
 import com.revrobotics.ControlType;
 
+import org.opencv.core.Rect;
+
+import edu.wpi.cscore.UsbCamera;
+import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.vision.VisionRunner;
+//import edu.wpi.first.vision.VisionThread;
+import edu.wpi.first.vision.VisionThread;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
@@ -26,7 +33,6 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
  * creating this project, you must also update the build.gradle file in the
  * project.
  */
-//wow
 public class Robot extends TimedRobot {
   private DifferentialDrive myRobot;
   private Joystick xboxController;
@@ -42,10 +48,20 @@ public class Robot extends TimedRobot {
 
   public CANSparkMax spark1, spark2, spark3, spark4, spark5, spark6;
 
+  //This is the GRIP Vision Variables
+  private static final int IMG_WIDTH = 480;
+  private static final int IMG_HEIGHT = 320;
+
+  private VisionThread visionThread;
+  private double centerX = 0.0;
+  private VisionRunner visionRunner;
+
+  private final Object imgLock = new Object();
+
   /**
    * This function is run when the robot is first started up and should be
    * used for any initialization code.
-   *///
+   */
   @Override
   public void robotInit() {
     m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
@@ -107,6 +123,31 @@ public class Robot extends TimedRobot {
     rightPidController.setFF(kFF);
     rightPidController.setOutputRange(kMinOutput, kMaxOutput);
 
+    //GRIP vision
+    UsbCamera camera = CameraServer.getInstance().startAutomaticCapture();
+    camera.setResolution(IMG_WIDTH, IMG_HEIGHT);
+
+    //GripPipeline pipeline;
+
+    visionThread = new VisionThread(camera, new GripPipeline(), pipeline -> {
+         if(!pipeline.findBlobsOutput().empty()){
+           synchronized(imgLock){
+             centerX =  pipeline.findBlobsOutput().toArray()[0].pt.x;
+           }
+          }
+      });
+    //visionRunner.runForever();
+      
+    //  visionRunner
+    // visionThread = new VisionThread(
+    //   camera, new GripPipeline(), pipeline -> {
+    //   if(!pipeline.findBlobsOutput().empty()){
+    //     synchronized(imgLock){
+    //       centerX = pipeline.findBlobsOutput().toArray()[0].pt.x;
+    //     }
+    //   }
+    // });
+    visionThread.start();
   }
 
   /**
@@ -166,6 +207,8 @@ public class Robot extends TimedRobot {
     double rightSetPoint = (xboxController.getRawAxis(1) + xboxController.getRawAxis(4) * 0.5) * maxRPM;
     leftPidController.setReference(leftSetPoint, ControlType.kVelocity);
     rightPidController.setReference(rightSetPoint, ControlType.kVelocity);
+
+    SmartDashboard.putNumber("Position", centerX);
   }
 
   /**
